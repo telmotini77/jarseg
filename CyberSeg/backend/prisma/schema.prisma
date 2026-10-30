@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Alert {
+  id            String   @id @default(cuid())
+  timestamp     DateTime @default(now())
+  sourceIp      String
+  destinationIp String
+  risk          String
+  description   String
+  score         Float
+  feature       Json
+  acknowledged  Boolean  @default(false)
+  falsePositive Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([risk])
+}
+
+model Statistic {
+  id           String   @id @default(cuid())
+  timestamp    DateTime @default(now())
+  trafficBytes BigInt   @default(0)
+  alertsTotal  Int      @default(0)
+}

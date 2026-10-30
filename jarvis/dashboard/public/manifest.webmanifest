@@ -1,0 +1,11 @@
+{
+  "name": "JARVIS Mobile",
+  "short_name": "JARVIS",
+  "description": "Estado y alertas defensivas de JARVIS y CyberSeg.",
+  "lang": "es",
+  "start_url": "/mobile",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#08111f",
+  "icons": [{ "src": "/jarvis-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

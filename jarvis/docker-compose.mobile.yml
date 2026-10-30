@@ -1,0 +1,18 @@
+services:
+  jarvis-mobile-gateway:
+    image: caddy:2-alpine
+    container_name: jarvis-mobile-gateway
+    restart: unless-stopped
+    ports:
+      # HTTPS gateway for trusted devices on the local Wi-Fi only.
+      - "192.168.200.151:8443:443"
+    volumes:
+      - ./Caddyfile.mobile:/etc/caddy/Caddyfile:ro
+      - jarvis_mobile_caddy_data:/data
+      - jarvis_mobile_caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  jarvis_mobile_caddy_data:
+  jarvis_mobile_caddy_config:

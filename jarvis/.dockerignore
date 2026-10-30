@@ -1,0 +1,37 @@
+# Git and build artifacts
+.git
+.github
+.gitignore
+.dockerignore
+docker-compose*.yml
+Dockerfile
+README.md
+
+# Python files and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+tests/.pytest_cache/
+
+# Local databases and logs
+data/*.db
+data/browser-profile/
+logs/
+*.log
+
+# Node.js and Dashboard dependencies/builds
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.pytest_cache/
+dashboard/tsconfig.tsbuildinfo
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/

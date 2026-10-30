@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8780:8780"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:5178:80"
+
+  engine:
+    build: ./engine
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - backend
+    environment:
+      CYBERSEG_API_URL: http://backend:8780
+    # Network capture requires an explicit operator decision in .env and these
+    # capabilities. It is passive and inactive by default.
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+volumes:
+  postgres-data:

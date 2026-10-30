@@ -1,0 +1,22 @@
+# Private Wi-Fi gateway: it exposes only the token-protected mobile summary.
+# The JARVIS dashboard and every write endpoint remain on loopback.
+{
+    debug
+}
+
+https://192.168.200.151 {
+    # Restrict key exchange to widely supported curves so Android and Windows
+    # clients can use the local certificate without newer PQ-TLS support.
+    tls internal {
+        curves x25519 secp256r1
+    }
+
+    @mobile_status path /api/mobile/status
+    handle @mobile_status {
+        reverse_proxy host.docker.internal:8766
+    }
+
+    handle {
+        respond "Not found" 404
+    }
+}

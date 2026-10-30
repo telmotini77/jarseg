@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <title>JARVIS Test</title>
+    <style>.hidden { display: none; }</style>
+  </head>
+  <body>
+    <h1>JARVIS Test</h1>
+    <h2>Documentación local</h2>
+    <p id="status">Página lista para la prueba.</p>
+    <p class="hidden">Este texto no debe estar visible.</p>
+    <label>Buscar <input aria-label="Buscar" oninput="document.getElementById('status').textContent = this.value"></label>
+    <label>Lenguaje
+      <select aria-label="Lenguaje" onchange="document.getElementById('status').textContent = this.value">
+        <option>JavaScript</option>
+        <option>Python</option>
+      </select>
+    </label>
+    <button onclick="document.getElementById('status').textContent = 'Búsqueda ejecutada'">Buscar</button>
+    <a href="https://docs.example.test/">Documentación</a>
+  </body>
+</html>

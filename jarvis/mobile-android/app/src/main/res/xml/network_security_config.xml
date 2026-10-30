@@ -1,0 +1,9 @@
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- The private Wi-Fi gateway CA; no device-wide CA install is needed. -->
+            <certificates src="@raw/jarvis_mobile_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

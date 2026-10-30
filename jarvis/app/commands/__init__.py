@@ -1,0 +1,1 @@
+"""Safe command classification."""
