@@ -1,5 +1,6 @@
-import { Controller, Get, Headers, Post, UnauthorizedException } from '@nestjs/common';
-import { timingSafeEqual } from 'crypto';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { EngineTokenGuard } from '../engine-token.guard';
+import { EngineHeartbeatDto } from './dto/engine-heartbeat.dto';
 import { EngineService } from './engine.service';
 
 @Controller('api/engine')
@@ -7,29 +8,33 @@ export class EngineController {
   constructor(private readonly engine: EngineService) {}
 
   @Get('state')
-  state(@Headers('x-cyberseg-engine-token') token = '') {
-    this.requireEngineToken(token);
+  @UseGuards(EngineTokenGuard)
+  state() {
     return this.engine.state();
   }
 
+  // Read-only view for the dashboard: counters and capture state, no controls.
+  @Get('status')
+  status() {
+    return this.engine.state();
+  }
+
+  @Post('heartbeat')
+  @UseGuards(EngineTokenGuard)
+  @HttpCode(HttpStatus.OK)
+  heartbeat(@Body() payload: EngineHeartbeatDto) {
+    return this.engine.recordHeartbeat(payload);
+  }
+
   @Post('start')
-  start(@Headers('x-cyberseg-engine-token') token = '') {
-    this.requireEngineToken(token);
+  @UseGuards(EngineTokenGuard)
+  start() {
     return this.engine.start();
   }
 
   @Post('stop')
-  stop(@Headers('x-cyberseg-engine-token') token = '') {
-    this.requireEngineToken(token);
+  @UseGuards(EngineTokenGuard)
+  stop() {
     return this.engine.stop();
-  }
-
-  private requireEngineToken(received: string) {
-    const expected = process.env.CYBERSEG_ENGINE_TOKEN || '';
-    const left = Buffer.from(received);
-    const right = Buffer.from(expected);
-    if (!expected || left.length !== right.length || !timingSafeEqual(left, right)) {
-      throw new UnauthorizedException('Invalid engine token');
-    }
   }
 }

@@ -1,0 +1,5 @@
+# Scripts and units run inside Linux containers/servers: keep LF even when the
+# repository is checked out on Windows with core.autocrlf=true.
+*.sh text eol=lf
+*.conf text eol=lf
+Dockerfile text eol=lf

@@ -209,6 +209,24 @@ def test_cyberseg_status_keeps_service_online_when_engine_state_is_temporarily_u
     assert client.status() == "CyberSeg ONLINE. Estado de captura no disponible temporalmente."
 
 
+def test_cyberseg_status_reports_engine_capture_progress(monkeypatch) -> None:
+    client = CyberSegClient("http://127.0.0.1:8780", "token")
+    engine = {"online": True, "capturing": True, "interface": "eth0", "packetsSeen": 1200, "portScansDetected": 2}
+
+    def request(_self, path: str, **_kwargs) -> object:
+        return {"status": "online"} if path == "/health" else {"captureEnabled": True, "engine": engine}
+
+    monkeypatch.setattr(CyberSegClient, "_request", request)
+    assert client.status() == (
+        "CyberSeg ONLINE. Captura local activa. Motor capturando en eth0: 1200 paquetes analizados, "
+        "2 escaneos de puertos detectados."
+    )
+    engine.update(prevention={"mode": "block", "activeBlocks": 3}, suricata={"enabled": True, "connected": True})
+    assert client.status().endswith("Prevención activa: 3 IPs bloqueadas. Suricata conectado.")
+    engine.update(online=False)
+    assert client.status() == "CyberSeg ONLINE. Captura local activa. El motor de captura no responde."
+
+
 def test_cyberseg_monitor_silences_service_state_by_default() -> None:
     class MonitorClient:
         available = False

@@ -9,4 +9,9 @@ export class AlertsGateway {
   publish(alert: unknown) {
     this.server.emit('new_alert', alert);
   }
+
+  // Lets the dashboard refresh blocks and findings without polling.
+  notify(event: 'blocks_changed' | 'findings_changed') {
+    this.server.emit(event);
+  }
 }

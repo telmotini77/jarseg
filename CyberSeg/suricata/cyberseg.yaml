@@ -1,0 +1,20 @@
+%YAML 1.1
+---
+# Overrides for the stock suricata.yaml, loaded with --include.
+#
+# eve.json only carries alerts: CyberSeg tails it, normalises each alert
+# (severity, category, MITRE ATT&CK) and rotates the file through the
+# unix-command socket so it never fills the disk.
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert:
+            metadata: yes
+            tagged-packets: no
+
+unix-command:
+  enabled: yes
+  filename: /var/run/suricata/suricata-command.socket

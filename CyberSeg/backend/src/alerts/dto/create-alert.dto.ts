@@ -1,4 +1,6 @@
-import { IsISO8601, IsNumber, IsObject, IsString, IsIn, MaxLength } from 'class-validator';
+import { IsIn, IsISO8601, IsNumber, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+
+export const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
 
 export class CreateAlertDto {
   @IsISO8601()
@@ -12,7 +14,7 @@ export class CreateAlertDto {
   @MaxLength(64)
   destinationIp!: string;
 
-  @IsIn(['medium', 'high'])
+  @IsIn(SEVERITIES)
   risk!: string;
 
   @IsString()
@@ -24,4 +26,32 @@ export class CreateAlertDto {
 
   @IsObject()
   feature!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  ruleId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  mitre?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4)
+  layer?: string;
+
+  @IsOptional()
+  @IsIn(['engine', 'suricata'])
+  sensor?: string;
+
+  @IsOptional()
+  @IsIn(['alert', 'blocked', 'not_blocked', 'dry_run', 'block_failed'])
+  action?: string;
 }

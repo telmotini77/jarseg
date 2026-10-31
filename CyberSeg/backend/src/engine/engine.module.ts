@@ -2,5 +2,5 @@ import { Module } from '@nestjs/common';
 import { EngineController } from './engine.controller';
 import { EngineService } from './engine.service';
 
-@Module({ controllers: [EngineController], providers: [EngineService] })
+@Module({ controllers: [EngineController], providers: [EngineService], exports: [EngineService] })
 export class EngineModule {}

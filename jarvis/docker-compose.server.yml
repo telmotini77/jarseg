@@ -1,0 +1,20 @@
+# Linux server override: docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
+#
+# On Linux, host.docker.internal resolves to the docker0 bridge, which cannot
+# reach CyberSeg's API because it is published on 127.0.0.1 only. Sharing the
+# host network lets JARVIS use the loopback URL it already trusts, without
+# exposing CyberSeg on any other interface.
+services:
+  jarvis:
+    network_mode: host
+    ports: !reset []
+    extra_hosts: !reset []
+    environment:
+      # With host networking the API binds directly on the server: keep it on loopback.
+      DASHBOARD_HOST: 127.0.0.1
+      DASHBOARD_PORT: "8766"
+      CYBERSEG_API_URL: http://127.0.0.1:8780
+      CYBERSEG_DEPLOYMENT_PROFILE: server
+      OLLAMA_HOST: http://127.0.0.1:11434
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8766/api/status', timeout=5).read()"]

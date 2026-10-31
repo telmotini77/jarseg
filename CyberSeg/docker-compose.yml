@@ -1,3 +1,12 @@
+x-logging: &logging
+  # Bounded logs so a long-running server never fills its disk.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-suricata-image: &suricata-image jasonish/suricata:7.0.17
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -13,38 +22,111 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    logging: *logging
 
   backend:
     build: ./backend
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Built from the POSTGRES_* values so the password lives in one place.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
     depends_on:
       postgres:
         condition: service_healthy
     ports:
+      # Loopback only: the engine, JARVIS and the dashboard proxy reach it locally.
       - "127.0.0.1:8780:8780"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8780/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    logging: *logging
 
   frontend:
     build: ./frontend
     restart: unless-stopped
+    environment:
+      CYBERSEG_DASHBOARD_USER: ${CYBERSEG_DASHBOARD_USER:-}
+      CYBERSEG_DASHBOARD_PASSWORD: ${CYBERSEG_DASHBOARD_PASSWORD:-}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
-      - "127.0.0.1:5178:80"
+      - "${CYBERSEG_DASHBOARD_BIND:-127.0.0.1}:${CYBERSEG_DASHBOARD_PORT:-5178}:80"
+    logging: *logging
 
   engine:
     build: ./engine
     restart: unless-stopped
     env_file: .env
-    depends_on:
-      - backend
     environment:
-      CYBERSEG_API_URL: http://backend:8780
-    # Network capture requires an explicit operator decision in .env and these
-    # capabilities. It is passive and inactive by default.
+      CYBERSEG_API_URL: http://127.0.0.1:8780
+    # The engine shares the host's network namespace so it sees the server's
+    # real interface (eth0, ens33...), audits the host's sockets and sysctls,
+    # and manages the host firewall (nftables) for the active response.
+    network_mode: host
     cap_add:
       - NET_RAW
       - NET_ADMIN
+    volumes:
+      - suricata-logs:/var/log/suricata
+      - suricata-run:/var/run/suricata
+      # Read-only: lets the audit check the host's SSH configuration.
+      - /etc/ssh:/host/etc/ssh:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *logging
+
+  # Signature IDS (Emerging Threats Open, tens of thousands of rules).
+  # Enabled with COMPOSE_PROFILES=suricata in .env; needs 1-2 GB of RAM.
+  suricata:
+    image: *suricata-image
+    profiles: ["suricata"]
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    command:
+      - "-i"
+      - "${CYBERSEG_INTERFACE:-eth0}"
+      - "--include"
+      - "/cyberseg/suricata-overrides.yaml"
+      - "--set"
+      - "vars.address-groups.HOME_NET=${CYBERSEG_HOME_NET:-[192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]}"
+    volumes:
+      # Outside /etc/suricata: the image's entrypoint chowns that directory.
+      - ./suricata/cyberseg.yaml:/cyberseg/suricata-overrides.yaml:ro
+      - suricata-logs:/var/log/suricata
+      - suricata-rules:/var/lib/suricata
+      - suricata-run:/var/run/suricata
+    logging: *logging
+
+  # Refreshes the rules at start-up and every 24 h, then hot-reloads Suricata.
+  suricata-update:
+    image: *suricata-image
+    profiles: ["suricata"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        while true; do
+        suricata-update --no-test --no-reload &&
+        (suricatasc -c reload-rules /var/run/suricata/suricata-command.socket || true);
+        sleep 86400;
+        done
+    volumes:
+      - suricata-rules:/var/lib/suricata
+      - suricata-run:/var/run/suricata
+    logging: *logging
 
 volumes:
   postgres-data:
+  suricata-logs:
+  suricata-rules:
+  suricata-run:

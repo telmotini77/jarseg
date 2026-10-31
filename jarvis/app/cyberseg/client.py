@@ -42,7 +42,34 @@ class CyberSegClient:
             # detail is temporarily busy or its local token needs attention.
             return f"CyberSeg {service}. Estado de captura no disponible temporalmente."
         capture = "activa" if isinstance(state, dict) and state.get("captureEnabled") else "detenida"
-        return f"CyberSeg {service}. Captura local {capture}."
+        engine = state.get("engine") if isinstance(state, dict) else None
+        return f"CyberSeg {service}. Captura local {capture}.{self._engine_detail(engine)}"
+
+    @staticmethod
+    def _engine_detail(engine: object) -> str:
+        # Older CyberSeg backends do not report engine heartbeats.
+        if not isinstance(engine, dict):
+            return ""
+        if not engine.get("online"):
+            return " El motor de captura no responde."
+        if engine.get("lastError"):
+            detail = f" Motor: {str(engine['lastError'])[:160]}"
+        elif engine.get("capturing"):
+            detail = (
+                f" Motor capturando en {engine.get('interface') or '—'}: {int(engine.get('packetsSeen') or 0)} paquetes "
+                f"analizados, {int(engine.get('portScansDetected') or 0)} escaneos de puertos detectados."
+            )
+        else:
+            detail = " Motor en espera."
+        prevention = engine.get("prevention")
+        if isinstance(prevention, dict) and prevention.get("mode") == "block":
+            detail += f" Prevención activa: {int(prevention.get('activeBlocks') or 0)} IPs bloqueadas."
+        elif isinstance(prevention, dict) and prevention.get("mode") == "dry-run":
+            detail += " Prevención en simulación."
+        suricata = engine.get("suricata")
+        if isinstance(suricata, dict) and suricata.get("enabled"):
+            detail += " Suricata conectado." if suricata.get("connected") else " Suricata sin datos."
+        return detail
 
     def recent_alerts(self, limit: int = 5) -> str:
         payload = self._request(f"/api/alerts?{urlencode({'limit': min(max(limit, 1), 20)})}")
