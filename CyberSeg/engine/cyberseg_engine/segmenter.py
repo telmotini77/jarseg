@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -10,42 +9,60 @@ from cyberseg_engine.models import PacketObservation, TrafficFeature
 @dataclass(slots=True)
 class TimeWindowSegmenter:
     window_seconds: int = 180
+    # Flows are aggregated incrementally (packets, bytes) instead of keeping
+    # every packet, and capped so a spoofed-source flood cannot exhaust memory.
+    max_flows: int = 100_000
+    dropped_packets: int = 0
     _window_start: datetime | None = None
-    _packets: list[PacketObservation] = field(default_factory=list)
+    _window_end: datetime | None = None
+    _flows: dict[tuple[str, str, int], list[int]] = field(default_factory=dict)
 
     def add(self, packet: PacketObservation) -> list[TrafficFeature]:
+        completed: list[TrafficFeature] = []
+        if self._window_start is not None and packet.timestamp - self._window_start >= timedelta(seconds=self.window_seconds):
+            completed = self.flush()
         if self._window_start is None:
             self._window_start = packet.timestamp
-        if packet.timestamp - self._window_start < timedelta(seconds=self.window_seconds):
-            self._packets.append(packet)
-            return []
-        completed = self.flush()
-        self._window_start = packet.timestamp
-        self._packets.append(packet)
+        if self._window_end is None or packet.timestamp > self._window_end:
+            self._window_end = packet.timestamp
+        key = (packet.source_ip, packet.destination_ip, packet.destination_port)
+        flow = self._flows.get(key)
+        if flow is None:
+            if len(self._flows) >= self.max_flows:
+                self.dropped_packets += 1
+                return completed
+            flow = self._flows[key] = [0, 0]
+        flow[0] += 1
+        flow[1] += packet.size
         return completed
 
+    def flush_expired(self, now: datetime) -> list[TrafficFeature]:
+        """Close the current window once its time is up, even without new packets."""
+        if self._window_start is not None and now - self._window_start >= timedelta(seconds=self.window_seconds):
+            return self.flush()
+        return []
+
     def flush(self) -> list[TrafficFeature]:
-        if not self._packets or self._window_start is None:
+        if not self._flows or self._window_start is None:
+            self._window_start = self._window_end = None
             return []
-        window_end = max(packet.timestamp for packet in self._packets)
-        groups: dict[tuple[str, str, int], list[PacketObservation]] = defaultdict(list)
-        for packet in self._packets:
-            groups[(packet.source_ip, packet.destination_ip, packet.destination_port)].append(packet)
-        duration = max(1.0, (window_end - self._window_start).total_seconds())
+        window_start = self._window_start
+        window_end = self._window_end or window_start
+        duration = max(1.0, (window_end - window_start).total_seconds())
         features = [
             TrafficFeature(
-                window_start=self._window_start,
+                window_start=window_start,
                 window_end=window_end,
                 source_ip=source,
                 destination_ip=destination,
                 destination_port=port,
-                packets=len(items),
-                bytes_total=sum(item.size for item in items),
-                packets_per_second=len(items) / duration,
-                average_packet_size=sum(item.size for item in items) / len(items),
+                packets=packets,
+                bytes_total=size,
+                packets_per_second=packets / duration,
+                average_packet_size=size / packets,
             )
-            for (source, destination, port), items in groups.items()
+            for (source, destination, port), (packets, size) in self._flows.items()
         ]
-        self._packets.clear()
-        self._window_start = None
+        self._flows = {}
+        self._window_start = self._window_end = None
         return features

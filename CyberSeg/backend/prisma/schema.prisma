@@ -12,16 +12,64 @@ model Alert {
   timestamp     DateTime @default(now())
   sourceIp      String
   destinationIp String
+  // low | medium | high | critical
   risk          String
   description   String
   score         Float
   feature       Json
+  // reconnaissance, credential_access, exploitation, malware, denial_of_service...
+  category      String   @default("anomaly")
+  ruleId        String   @default("")
+  // MITRE ATT&CK technique, e.g. T1046
+  mitre         String   @default("")
+  // OSI layer: L2, L3, L4, L7
+  layer         String   @default("")
+  // engine (behaviour) | suricata (signatures)
+  sensor        String   @default("engine")
+  // alert | blocked | not_blocked | dry_run | block_failed
+  action        String   @default("alert")
   acknowledged  Boolean  @default(false)
   falsePositive Boolean  @default(false)
   createdAt     DateTime @default(now())
 
   @@index([timestamp])
   @@index([risk])
+  @@index([sourceIp])
+  @@index([category])
+}
+
+model Block {
+  ip         String    @id
+  reason     String
+  severity   String
+  ruleId     String    @default("")
+  sensor     String    @default("engine")
+  offenses   Int       @default(1)
+  blockedAt  DateTime  @default(now())
+  expiresAt  DateTime
+  active     Boolean   @default(true)
+  releasedAt DateTime?
+
+  @@index([active, expiresAt])
+}
+
+model Finding {
+  key            String    @id
+  // audit (server configuration) | traffic (observed on the wire)
+  source         String
+  severity       String
+  category       String
+  title          String
+  detail         String
+  recommendation String
+  asset          String    @default("")
+  mitre          String    @default("")
+  firstSeen      DateTime  @default(now())
+  lastSeen       DateTime  @default(now())
+  resolved       Boolean   @default(false)
+  resolvedAt     DateTime?
+
+  @@index([resolved, severity])
 }
 
 model Statistic {

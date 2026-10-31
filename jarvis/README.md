@@ -158,7 +158,18 @@ CYBERSEG_MONITOR_POLL_SECONDS=15
 
 Comandos: `Jarvis dime el estado de CyberSeg`, `Jarvis muéstrame las alertas
 de CyberSeg`, `Jarvis inicia la captura de CyberSeg` y `Jarvis detén la captura
-de CyberSeg`.
+de CyberSeg`. El estado incluye la interfaz, los paquetes analizados y los
+escaneos de puertos detectados por el motor.
+
+En un servidor Linux con CyberSeg en Docker, `host.docker.internal` apunta al
+puente `docker0` y no alcanza la API publicada solo en `127.0.0.1`. Arranca
+JARVIS con la red del host para que use la URL de loopback:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+```
+
+Con este modo, la API de JARVIS escucha en `127.0.0.1:8766` del servidor.
 
 Con el monitor activo, JARVIS consulta CyberSeg cada 15 segundos y avisa por
 Telegram de tres resultados: una revisión limpia del radar y del sistema, una
@@ -195,6 +206,11 @@ contención. Consulta su cobertura con `Jarvis muéstrame el entrenamiento de
 CyberSeg`; las alertas mostradas por JARVIS se etiquetan automáticamente.
 
 ## Perfiles de protección: escritorio y servidor Linux
+
+CyberSeg incluye su propia prevención: bloquea en nftables, con caducidad, a
+los atacantes de riesgo alto. Si lo usas, deja `CYBERSEG_SERVER_AUTO_BLOCK=false`
+para no duplicar bloqueos. El bloqueo de JARVIS queda para instalaciones de
+CyberSeg con `CYBERSEG_PREVENTION_MODE=alert`.
 
 El perfil `desktop` es el predeterminado: analiza las alertas y las comunica a
 Telegram, sin cambiar la red del equipo. El perfil `server` funciona en Linux
