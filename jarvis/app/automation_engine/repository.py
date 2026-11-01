@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from app.core.database import connect_database
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,8 +44,7 @@ class AutomationRepository:
             self.create_schema(connection)
 
     def _connection(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
+        connection = connect_database(self.path)
         return connection
 
     @staticmethod

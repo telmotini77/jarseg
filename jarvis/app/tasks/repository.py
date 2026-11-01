@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from app.core.database import connect_database
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -36,8 +37,7 @@ class TaskRepository:
             )
 
     def _connection(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
+        connection = connect_database(self.path)
         return connection
 
     @staticmethod

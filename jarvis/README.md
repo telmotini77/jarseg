@@ -1,5 +1,25 @@
 # JARVIS v1.4 — Aplicación de escritorio y perfiles multiusuario
 
+## PostgreSQL opcional
+
+JARVIS sigue usando SQLite por defecto. Para usar PostgreSQL con una base nueva,
+configura `JARVIS_DATABASE_URL` en `.env`, por ejemplo:
+
+```dotenv
+JARVIS_DATABASE_URL=postgresql://jarvis_app:CONTRASENA@127.0.0.1:5432/jarvis
+```
+
+La cuenta debe ser propietaria de la base. JARVIS crea sus tablas al iniciar;
+no migra automáticamente datos de SQLite. Con `docker-compose.server.yml` en
+Linux, el contenedor usa la red del servidor, de modo que `127.0.0.1` apunta al
+propio servidor. En otros modos Docker, usa una dirección accesible desde el
+contenedor. La copia de seguridad de PostgreSQL se hace con `pg_dump` o
+`pg_dumpall`; el respaldo SQLite integrado no respalda PostgreSQL.
+
+La prueba de integración usa una base de prueba vacía y una cuenta que pueda
+crear y borrar esquemas: `JARVIS_TEST_POSTGRES_URL=postgresql://... pytest
+tests/test_postgres_storage.py`. Nunca uses una base de producción para esto.
+
 ## JARVIS Desktop (interfaz principal)
 
 JARVIS se inicia como una aplicación nativa de Windows, no como una página en
