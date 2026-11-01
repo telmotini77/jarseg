@@ -20,6 +20,32 @@ if ! health="$(curl -fsS --max-time 5 "$API/health" 2>/dev/null)"; then
 fi
 pass "API en línea: $health"
 
+# Web dashboard: HTTPS answers and asks for a login (401 without session).
+ENV_FILE="$(dirname "$0")/../.env"
+setting() { [ -r "$ENV_FILE" ] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -n1; }
+web_host="$(setting CYBERSEG_DASHBOARD_BIND)"
+web_port="$(setting CYBERSEG_HTTPS_PORT)"
+web_url="https://${web_host:-127.0.0.1}:${web_port:-443}"
+web_code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "$web_url/api/auth/me" 2>/dev/null)"
+case "$web_code" in
+  401) pass "Panel web en $web_url/ (requiere inicio de sesión)" ;;
+  000) warn "El panel web no responde en $web_url (docker compose logs frontend)" ;;
+  *) warn "El panel web respondió $web_code en $web_url/api/auth/me (se esperaba 401)" ;;
+esac
+[ -n "$(setting CYBERSEG_ADMIN_PASSWORD)" ] || warn "CYBERSEG_ADMIN_PASSWORD está vacío: nadie puede iniciar sesión en el panel."
+
+# Remote access VPN: wg0 is up and the dashboard answers inside the tunnel.
+case "$(setting COMPOSE_FILE)" in
+  *docker-compose.vpn.yml*)
+    vpn_ip="$(setting CYBERSEG_VPN_SERVER_IP)"
+    if ip -brief address show wg0 2>/dev/null | grep -q "${vpn_ip:-10.13.13.1}"; then
+      peers="$(find "$(dirname "$0")/../vpn" -maxdepth 1 -name 'peer_*' -type d 2>/dev/null | wc -l)"
+      pass "VPN WireGuard activa ($peers perfiles): por el túnel, panel en $web_url/ · UDP $(setting CYBERSEG_VPN_PORT) hacia Internet"
+    else
+      warn "La interfaz wg0 no está activa (docker compose logs vpn)"
+    fi ;;
+esac
+
 status() { curl -fsS --max-time 5 "$API/api/engine/status"; }
 first="$(status)"
 online="$(printf '%s' "$first" | json "d['engine'].get('online', False)")"

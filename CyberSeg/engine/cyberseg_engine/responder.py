@@ -188,6 +188,30 @@ class Responder:
         })
         return self._annotate(alert, "blocked", target=target, seconds=seconds, offenses=offenses)
 
+    def manual_block(self, address: str, seconds: int, reason: str) -> tuple[bool, str]:
+        """Operator order from the dashboard; the same protections apply."""
+        refusal = self.protection_reason(address)
+        if refusal:
+            return False, f"No se bloqueó {address}: {refusal}."
+        if self.policy.mode != "block":
+            return False, f"No se bloqueó {address}: la prevención está en modo {self.policy.mode}."
+        try:
+            self._firewall.block(address, seconds)
+        except (FirewallError, OSError, subprocess.SubprocessError) as error:
+            return False, f"No se bloqueó {address}: {error}"
+        with self._lock:
+            self._active[address] = time.monotonic() + seconds
+            self._offenses[address] = self._offenses.get(address, 0) + 1
+            offenses = self._offenses[address]
+            self.blocks_applied += 1
+        expires = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+        self._logger.warning("IP %s bloqueada %s por orden del operador: %s", address, _duration(seconds), reason)
+        self._report({
+            "ip": address, "reason": reason[:300], "severity": "high", "ruleId": "MANUAL", "sensor": "engine",
+            "seconds": seconds, "expiresAt": expires.isoformat(), "offenses": offenses,
+        })
+        return True, f"{address} bloqueada durante {_duration(seconds)}."
+
     def restore(self, blocks: dict[str, int]) -> None:
         """Track blocks already in the firewall (they outlive engine restarts)."""
         now = time.monotonic()

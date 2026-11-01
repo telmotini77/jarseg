@@ -1,0 +1,48 @@
+# Remote access through a WireGuard VPN. Enabled from .env with:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.vpn.yml
+#
+# Only UDP ${CYBERSEG_VPN_PORT} faces the Internet (forward it on your router).
+# WireGuard never answers packets without a valid key, so the port looks
+# closed to scanners and floods cost almost nothing. The dashboard itself is
+# never public: the tunnel routes to its LAN address, so VPN clients open the
+# same https://<LAN IP>/ with the same certificate as at home. The dashboard
+# does not depend on wg0 existing, so a reboot in any order cannot leave it down.
+services:
+  vpn:
+    image: linuxserver/wireguard:1.0.20260223-r0-ls126
+    restart: unless-stopped
+    # Host network: wg0 lives on the server, so tunnel traffic reaches the
+    # dashboard directly and the engine sees (and protects) the VPN port.
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: ${TZ:-UTC}
+      SERVERURL: ${CYBERSEG_VPN_ENDPOINT:?Define CYBERSEG_VPN_ENDPOINT (tu IP pública) en .env}
+      SERVERPORT: ${CYBERSEG_VPN_PORT:-51820}
+      PEERS: ${CYBERSEG_VPN_PEERS:-pc,movil}
+      INTERNAL_SUBNET: ${CYBERSEG_VPN_SUBNET:-10.13.13.0}
+      # Split tunnel: only the server's VPN and LAN addresses travel through the
+      # VPN; the rest of the client's traffic keeps its normal route.
+      ALLOWEDIPS: ${CYBERSEG_VPN_SERVER_IP:-10.13.13.1}/32,${CYBERSEG_DASHBOARD_BIND:-127.0.0.1}/32
+      PEERDNS: "auto"
+      PERSISTENTKEEPALIVE_PEERS: all
+      LOG_CONFS: "true"
+    volumes:
+      # Server and client keys, client .conf files and QR codes (keep private).
+      - ./vpn:/config
+      - /lib/modules:/lib/modules:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wg show wg0 >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

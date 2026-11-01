@@ -11,7 +11,7 @@ export class FindingsService {
 
   async list(status: string) {
     const findings = await this.prisma.finding.findMany({
-      where: status === 'all' ? {} : { resolved: status === 'resolved' },
+      where: status === 'all' ? {} : status === 'accepted' ? { accepted: true } : { resolved: status === 'resolved' },
       orderBy: { lastSeen: 'desc' },
       take: 500,
     });
@@ -29,6 +29,7 @@ export class FindingsService {
     for (const finding of findings) {
       await this.save({ ...finding, source });
     }
+    // Accepted risks stay as they are; everything else not found is resolved.
     const resolved = await this.prisma.finding.updateMany({
       where: { source, resolved: false, key: { notIn: findings.map((finding) => finding.key) } },
       data: { resolved: true, resolvedAt: new Date() },
@@ -37,11 +38,26 @@ export class FindingsService {
     return { stored: findings.length, resolved: resolved.count };
   }
 
-  private save(finding: FindingDto) {
+  // An administrator accepts a risk (it stays closed) or reopens it.
+  async accept(key: string, accepted: boolean, by: string) {
+    const finding = await this.prisma.finding.update({
+      where: { key },
+      data: accepted
+        ? { accepted: true, acceptedBy: by, resolved: true, resolvedAt: new Date() }
+        : { accepted: false, acceptedBy: '', resolved: false, resolvedAt: null },
+    });
+    this.gateway.notify('findings_changed');
+    return finding;
+  }
+
+  private async save(finding: FindingDto) {
+    const existing = await this.prisma.finding.findUnique({ where: { key: finding.key }, select: { accepted: true } });
     const data = {
       source: finding.source, severity: finding.severity, category: finding.category, title: finding.title,
       detail: finding.detail, recommendation: finding.recommendation, asset: finding.asset ?? '', mitre: finding.mitre ?? '',
-      lastSeen: new Date(), resolved: false, resolvedAt: null,
+      lastSeen: new Date(),
+      // Seen again: reopen it, unless an administrator accepted the risk.
+      ...(existing?.accepted ? {} : { resolved: false, resolvedAt: null }),
     };
     return this.prisma.finding.upsert({ where: { key: finding.key }, create: { key: finding.key, ...data }, update: data });
   }

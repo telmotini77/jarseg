@@ -6,3 +6,10 @@ __pycache__/
 .venv/
 *.py[cod]
 data/
+build/
+.build-venv/
+*.spec
+downloads/*
+!downloads/README.md
+# WireGuard keys and client profiles
+vpn/

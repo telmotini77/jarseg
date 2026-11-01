@@ -32,7 +32,7 @@ def _interface_problem(interface: str) -> str | None:
     return None
 
 
-def _network_context(interface: str, trusted: tuple[str, ...]) -> NetworkContext:
+def _network_context(interface: str, trusted: tuple[str, ...], service_udp_ports: frozenset[int] = frozenset()) -> NetworkContext:
     addresses: set[str] = set()
     gateway = ""
     if interface:
@@ -47,7 +47,7 @@ def _network_context(interface: str, trusted: tuple[str, ...]) -> NetworkContext
             gateway = str(conf.route.route("1.1.1.1")[2] or "")
         except Exception:
             LOGGER.warning("No se pudieron leer las direcciones de %s.", interface)
-    return NetworkContext(frozenset(addresses), "" if gateway == "0.0.0.0" else gateway, trusted)
+    return NetworkContext(frozenset(addresses), "" if gateway == "0.0.0.0" else gateway, trusted, service_udp_ports)
 
 
 def _capture_filter(interface: str) -> str | None:
@@ -156,6 +156,31 @@ class AuditScheduler:
             self._stop.wait(self._interval)
 
 
+def _apply_orders(reply: dict[str, object], responder: Responder | None) -> list[dict[str, object]]:
+    """Run the operator's block/unblock orders; results go back on the next heartbeat."""
+    results: list[dict[str, object]] = []
+    for address in reply.get("unblock") or []:
+        if responder is None:
+            results.append({"action": "unblock", "ip": address, "ok": False, "message": "La prevención no está activa en el motor."})
+            continue
+        try:
+            responder.unblock(str(address))
+            results.append({"action": "unblock", "ip": address, "ok": True, "message": f"{address} desbloqueada."})
+        except FirewallError as error:
+            LOGGER.error("No se pudo desbloquear %s: %s", address, error)
+            results.append({"action": "unblock", "ip": address, "ok": False, "message": str(error)[:200]})
+    for order in reply.get("block") or []:
+        if not isinstance(order, dict):
+            continue
+        address = str(order.get("ip", ""))
+        if responder is None:
+            ok, message = False, "La prevención no está activa en el motor."
+        else:
+            ok, message = responder.manual_block(address, int(order.get("seconds") or 3600), str(order.get("reason") or "Bloqueo manual"))
+        results.append({"action": "block", "ip": address, "ok": ok, "message": message})
+    return results
+
+
 def _build_responder(config: EngineConfig, context: NetworkContext, alerts: AlertQueue) -> tuple[Responder | None, str]:
     if config.prevention_mode == "alert":
         return None, "alert"
@@ -204,7 +229,7 @@ def main() -> None:
         problem = "Define CYBERSEG_INTERFACE antes de habilitar captura."
     else:
         problem = _interface_problem(config.interface)
-    context = _network_context(config.interface if problem is None else "", config.trusted_networks)
+    context = _network_context(config.interface if problem is None else "", config.trusted_networks, frozenset({config.vpn_port}))
 
     responder, prevention = _build_responder(config, context, alerts)
     if responder is not None:
@@ -248,6 +273,7 @@ def main() -> None:
     started_at = utcnow().isoformat()
     api_online: bool | None = None
     requested = False
+    order_results: list[dict[str, object]] = []
     try:
         while not stop.is_set():
             status: dict[str, object] = {
@@ -269,17 +295,15 @@ def main() -> None:
                 "audit": {"enabled": config.audit_enabled, "lastRunAt": audit.last_run_at if audit else None, "findings": audit.findings if audit else 0},
                 **(controller.analyzer.snapshot() if controller else {}),
             }
+            if order_results:
+                status["orderResults"] = order_results
             try:
                 # Transient API outages keep the last requested state: capture
                 # only stops when the controller explicitly asks for it.
                 reply = publisher.heartbeat(status)
                 requested = bool(reply.get("captureEnabled"))
-                for address in reply.get("unblock") or []:
-                    if responder is not None:
-                        try:
-                            responder.unblock(str(address))
-                        except FirewallError as error:
-                            LOGGER.error("No se pudo desbloquear %s: %s", address, error)
+                # Delivered results are replaced by the outcome of the new orders.
+                order_results = _apply_orders(reply, responder)
                 if api_online is not True:
                     LOGGER.info("Conectado a la API de CyberSeg (%s). Captura solicitada: %s.", config.api_url, requested)
                 api_online = True
