@@ -73,6 +73,14 @@ def download_ca(server: str, timeout: float = 5.0) -> bytes:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             data = response.read(64_000)
     except (urllib.error.URLError, TimeoutError, OSError) as error:
+        reason = getattr(error, "reason", error)
+        if isinstance(reason, ConnectionRefusedError):
+            # The machine answered but nothing listens on port 80: the server
+            # is on, the CyberSeg dashboard (frontend container) is not.
+            raise ConnectionProblem(
+                f"{host_only(server)} está encendido pero el panel de CyberSeg no está en marcha. "
+                "En el servidor ejecuta: docker compose up -d --build y luego docker compose ps."
+            ) from error
         raise ConnectionProblem(f"No se pudo contactar con {host_only(server)}. ¿Está encendido el servidor y en tu misma red?") from error
     pem_to_der(data)
     return data
