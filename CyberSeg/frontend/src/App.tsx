@@ -13,6 +13,15 @@ function Badge({ severity }: { severity: string }) {
   return <b className={`badge ${severity}`}>{SEVERITY_LABEL[severity] ?? severity}</b>;
 }
 
+// Reloads one part of the dashboard; spins while its request is in flight.
+function Refresh({ onRefresh, label = 'Actualizar' }: { onRefresh: () => Promise<unknown>; label?: string }) {
+  const [busy, setBusy] = useState(false);
+  const click = () => { setBusy(true); onRefresh().finally(() => setBusy(false)); };
+  return <button type="button" className={`refresh${busy ? ' busy' : ''}`} onClick={click} disabled={busy} title={label} aria-label={label}>
+    <span aria-hidden="true">↻</span>
+  </button>;
+}
+
 function sensorStatus(state: EngineState | null) {
   const engine = state?.engine;
   const online = Boolean(engine?.online);
@@ -72,10 +81,28 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
     else notify(failure instanceof Error ? failure.message : 'La operación falló.', false);
   }, [notify, onSignedOut]);
 
-  const loadAlerts = useCallback(() => getJson<Alert[]>('/api/alerts?limit=200').then(setAlerts).catch(guard), [guard]);
-  const loadStats = useCallback(() => getJson<Stats>('/api/stats').then(setStats).catch(guard), [guard]);
-  const loadBlocks = useCallback(() => getJson<Block[]>('/api/blocks').then(setBlocks).catch(guard), [guard]);
-  const loadFindings = useCallback(() => getJson<Finding[]>('/api/findings').then(setFindings).catch(guard), [guard]);
+  // Loaders resolve to whether they succeeded, so the global refresh can confirm.
+  const failed = useCallback((failure: unknown) => { guard(failure); return false; }, [guard]);
+  const loadAlerts = useCallback(() => getJson<Alert[]>('/api/alerts?limit=200').then(setAlerts).then(() => true, failed), [failed]);
+  const loadStats = useCallback(() => getJson<Stats>('/api/stats').then(setStats).then(() => true, failed), [failed]);
+  const loadBlocks = useCallback(() => getJson<Block[]>('/api/blocks').then(setBlocks).then(() => true, failed), [failed]);
+  const loadFindings = useCallback(() => getJson<Finding[]>('/api/findings').then(setFindings).then(() => true, failed), [failed]);
+  const loadAccepted = useCallback(() => getJson<Finding[]>('/api/findings?status=accepted').then(setAccepted).then(() => true, failed), [failed]);
+  const loadEngine = useCallback(() => getJson<EngineState>('/api/engine/status').then(setEngine).then(() => true, failed), [failed]);
+  const loadDownloads = useCallback(() => fetch('/descargas/CyberSeg.exe', { method: 'HEAD', credentials: 'same-origin' })
+    .then((response) => { setDesktopAvailable(response.ok); return true; }, () => false), []);
+  const showingAccepted = accepted !== null;
+  const refreshFindings = useCallback(
+    () => Promise.all([loadFindings(), showingAccepted ? loadAccepted() : true]).then((results) => results.every(Boolean)),
+    [loadFindings, loadAccepted, showingAccepted],
+  );
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAll = () => {
+    setRefreshing(true);
+    Promise.all([loadEngine(), loadStats(), loadAlerts(), loadBlocks(), refreshFindings(), loadDownloads()])
+      .then((results) => { if (results.every(Boolean)) notify(`Panel actualizado a las ${new Date().toLocaleTimeString()}.`); })
+      .finally(() => setRefreshing(false));
+  };
   const refreshStatsSoon = useCallback(() => {
     window.clearTimeout(statsTimer.current);
     statsTimer.current = window.setTimeout(loadStats, 1500);
@@ -91,19 +118,18 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
     socket.on('blocks_changed', () => { loadBlocks(); refreshStatsSoon(); });
     socket.on('findings_changed', () => { loadFindings(); refreshStatsSoon(); });
     socket.on('order_result', (result: OrderResult) => notify(result.message, result.ok));
-    const pollEngine = () => getJson<EngineState>('/api/engine/status').then(setEngine).catch(guard);
-    pollEngine();
-    socket.on('engine_changed', pollEngine);
-    const engineTimer = window.setInterval(pollEngine, 5000);
+    loadEngine();
+    socket.on('engine_changed', loadEngine);
+    const engineTimer = window.setInterval(loadEngine, 5000);
     const slowTimer = window.setInterval(() => { loadStats(); loadBlocks(); }, 30000);
-    fetch('/descargas/CyberSeg.exe', { method: 'HEAD', credentials: 'same-origin' }).then((response) => setDesktopAvailable(response.ok)).catch(() => undefined);
+    loadDownloads();
     const onInstallable = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPrompt); };
     window.addEventListener('beforeinstallprompt', onInstallable);
     return () => {
       socket.close(); window.clearInterval(engineTimer); window.clearInterval(slowTimer);
       window.removeEventListener('beforeinstallprompt', onInstallable);
     };
-  }, [loadAlerts, loadStats, loadBlocks, loadFindings, refreshStatsSoon, notify, guard]);
+  }, [loadAlerts, loadStats, loadBlocks, loadFindings, loadEngine, loadDownloads, refreshStatsSoon, notify]);
 
   const run = useCallback(async (path: string, body: unknown, done?: string) => {
     try {
@@ -122,7 +148,7 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
   const unblock = (ip: string) => run('/api/manage/blocks/unblock', { ip });
   const acceptRisk = (finding: Finding, value: boolean) =>
     run('/api/manage/findings/accept', { key: finding.key, accepted: value }, value ? 'Riesgo aceptado: no volverá a abrirse.' : 'Vulnerabilidad reabierta.')
-      .then(() => { if (accepted) getJson<Finding[]>('/api/findings?status=accepted').then(setAccepted).catch(guard); });
+      .then(() => { if (accepted) loadAccepted(); });
   const toggleCapture = () => run('/api/manage/capture', { enabled: !engine?.captureEnabled },
     engine?.captureEnabled ? 'Captura detenida.' : 'Captura iniciada.');
   const logout = () => postJson('/api/auth/logout').catch(() => undefined).finally(onSignedOut);
@@ -162,16 +188,21 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
         <span className="muted">{session.user} · {admin ? 'Administrador' : 'Solo lectura'}</span>
         {admin && engine?.engine.online && <button className="ghost" onClick={toggleCapture}>{engine.captureEnabled ? 'Detener captura' : 'Iniciar captura'}</button>}
         {installPrompt && <button className="ghost" onClick={() => installPrompt.prompt().then(() => setInstallPrompt(null))}>Instalar app</button>}
+        <button className="ghost" onClick={refreshAll} disabled={refreshing} title="Recarga todas las secciones del panel">
+          <span className={refreshing ? 'spin' : ''} aria-hidden="true">↻</span> {refreshing ? 'Actualizando…' : 'Actualizar todo'}
+        </button>
         <button className="ghost" onClick={logout}>Cerrar sesión</button>
       </div>
     </header>
 
     <div className="notices">{notices.map((notice) => <p key={notice.id} className={notice.ok ? 'ok' : 'bad'}>{notice.text}</p>)}</div>
 
+    <div className="section-head"><h2>Estado de los sensores</h2><Refresh onRefresh={loadEngine} label="Actualizar sensores" /></div>
     <section className="sensors">{sensorStatus(engine).map(([name, value, detail, tone]) =>
       <article key={name} className={tone}><small>{name}</small><strong>{value}</strong><p>{detail}</p></article>)}
     </section>
 
+    <div className="section-head"><h2>Resumen de las últimas 24 h</h2><Refresh onRefresh={loadStats} label="Actualizar resumen" /></div>
     <section className="metrics">
       <article><small>ALERTAS 24 H</small><strong>{stats?.alerts.total ?? 0}</strong><p>{stats?.alerts.bySensor.suricata ?? 0} por firmas · {stats?.alerts.bySensor.engine ?? 0} por comportamiento</p></article>
       <article><small>CRÍTICAS Y ALTAS</small><strong className="danger">{severe}</strong><p>{stats?.alerts.bySeverity.critical ?? 0} críticas</p></article>
@@ -181,7 +212,7 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
 
     <section className="grid two">
       <article className="panel">
-        <h2>Actividad de las últimas 24 h</h2>
+        <div className="panel-head"><h2>Actividad de las últimas 24 h</h2><Refresh onRefresh={loadStats} label="Actualizar actividad" /></div>
         <div className="timeline">{hours.map((point) =>
           <div key={point.hour} className={point.count ? '' : 'empty'} title={`${new Date(point.hour).toLocaleString()}: ${point.count} alertas`}
             style={{ height: `${point.count ? Math.max(6, (point.count / peak) * 100) : 2}%` }} />)}
@@ -191,7 +222,7 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
         </div>
       </article>
       <article className="panel">
-        <h2>Principales atacantes</h2>
+        <div className="panel-head"><h2>Principales atacantes</h2><Refresh onRefresh={loadStats} label="Actualizar atacantes" /></div>
         <table><thead><tr><th>IP</th><th>Alertas</th><th>Máx.</th><th>Tácticas</th><th>Estado</th></tr></thead>
           <tbody>{(stats?.attackers ?? []).map((attacker) => <tr key={attacker.ip}>
             <td className="mono">{attacker.ip}</td><td>{attacker.alerts}</td><td><Badge severity={attacker.maxSeverity} /></td>
@@ -216,6 +247,7 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
             <option value="all">Todas las categorías</option>{categories.map((item) => <option key={item} value={item}>{CATEGORY_LABEL[item] ?? item}</option>)}
           </select>
           <label className="check"><input type="checkbox" checked={hideReviewed} onChange={(event) => setHideReviewed(event.target.checked)} /> Ocultar revisadas</label>
+          <Refresh onRefresh={loadAlerts} label="Actualizar alertas" />
         </div>
       </div>
       <table><thead><tr><th>Fecha</th><th>Severidad</th><th>Categoría</th><th>Capa</th><th>MITRE</th><th>Origen → destino</th><th>Respuesta</th><th>Detalle</th>{admin && <th>Gestión</th>}</tr></thead>
@@ -238,9 +270,12 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
     <section className="grid two">
       <article className="panel">
         <div className="panel-head"><h2>Vulnerabilidades y exposición</h2>
-          <button className="link" onClick={() => accepted ? setAccepted(null) : getJson<Finding[]>('/api/findings?status=accepted').then(setAccepted).catch(guard)}>
-            {accepted ? 'Ocultar riesgos aceptados' : 'Ver riesgos aceptados'}
-          </button>
+          <div className="filters">
+            <button className="link" onClick={() => accepted ? setAccepted(null) : loadAccepted()}>
+              {accepted ? 'Ocultar riesgos aceptados' : 'Ver riesgos aceptados'}
+            </button>
+            <Refresh onRefresh={refreshFindings} label="Actualizar vulnerabilidades" />
+          </div>
         </div>
         {findings.map((finding) => <details key={finding.key} className="finding">
           <summary><Badge severity={finding.severity} /> <b>{finding.title}</b> <span className="muted">· {FINDING_CATEGORY_LABEL[finding.category] ?? finding.category} · {finding.asset}</span></summary>
@@ -256,7 +291,7 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
         </div>}
       </article>
       <article className="panel">
-        <h2>IPs bloqueadas</h2>
+        <div className="panel-head"><h2>IPs bloqueadas</h2><Refresh onRefresh={loadBlocks} label="Actualizar IPs bloqueadas" /></div>
         {admin && <form className="inline-form" onSubmit={submitBlock}>
           <input placeholder="IP a bloquear" value={manualIp} onChange={(event) => setManualIp(event.target.value)} required />
           <select value={manualHours} onChange={(event) => setManualHours(Number(event.target.value))}>
@@ -276,7 +311,7 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
     </section>
 
     <section className="panel">
-      <h2>Descargas</h2>
+      <div className="panel-head"><h2>Descargas</h2><Refresh onRefresh={loadDownloads} label="Actualizar descargas" /></div>
       <div className="downloads">
         <article><h3>Informe PDF</h3><p className="muted">Resumen ejecutivo: alertas, atacantes, bloqueos y vulnerabilidades con su corrección.</p>
           <a href="/api/export/report.pdf?days=7" download>Últimos 7 días</a><a href="/api/export/report.pdf?days=30" download>Últimos 30 días</a></article>
@@ -293,7 +328,7 @@ function Dashboard({ session, onSignedOut }: { session: Session; onSignedOut: ()
     </section>
 
     <section className="panel">
-      <h2>Cobertura por capa</h2>
+      <div className="panel-head"><h2>Cobertura por capa</h2><Refresh onRefresh={loadStats} label="Actualizar cobertura" /></div>
       <div className="coverage">{COVERAGE.map((layer) => <article key={layer.layer}>
         <header><b>{layer.layer}</b> {layer.title}<span>{stats?.alerts.byLayer[layer.layer] ?? 0} alertas 24 h</span></header>
         <ul>{layer.items.map((item) => <li key={item}>{item}</li>)}</ul>

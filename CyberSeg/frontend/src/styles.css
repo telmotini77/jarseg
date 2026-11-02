@@ -10,7 +10,7 @@ header span{color:#51cfff;font-weight:800;letter-spacing:.15em}h1{margin:8px 0 0
 small{color:var(--muted);letter-spacing:.06em}.sensors p,.metrics p{color:var(--muted);margin:6px 0 0;font-size:13px;overflow-wrap:anywhere}
 .metrics strong{display:block;font-size:30px;margin-top:8px}.danger{color:var(--bad)}.warning{color:var(--warn)}
 .panel{overflow:auto;margin-bottom:16px}.grid.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid.two .panel{margin-bottom:0}.grid.two{margin-bottom:16px}
-.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.panel-head h2{margin:0}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}.panel-head h2{margin:0}
 .filters{display:flex;gap:8px;flex-wrap:wrap}select{background:#06101e;color:#dcecff;border:1px solid var(--line);border-radius:8px;padding:7px 10px}
 table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px;border-bottom:1px solid #15334f;font-size:13px;vertical-align:top}th{color:var(--muted);font-weight:600}
 a{color:#51cfff}.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;white-space:nowrap}
@@ -37,6 +37,11 @@ input{background:#06101e;color:#dcecff;border:1px solid var(--line);border-radiu
 .accepted{margin-top:14px;border-top:1px solid #15334f;padding-top:6px}.accepted h3{font-size:14px;margin:8px 0}.accepted p{font-size:13px;margin:6px 0}
 .downloads{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.downloads article{border:1px solid #15334f;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .downloads h3{margin:0;font-size:15px}.downloads p{margin:0;font-size:13px}.downloads a{color:#51cfff}
+.filters{align-items:center}.section-head{display:flex;justify-content:space-between;align-items:center;margin-top:22px}.section-head h2{margin:0;font-size:15px;color:var(--muted)}
+.section-head+.sensors,.section-head+.metrics{margin-top:10px}
+button.refresh{background:transparent;color:#51cfff;border:1px solid var(--line);width:32px;height:32px;padding:0;font-size:17px;line-height:1;flex:none}button.refresh:hover:not(:disabled){border-color:#51cfff}
+.refresh.busy span,.spin{display:inline-block;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.refresh.busy span,.spin{animation:none}}
 @media(max-width:1000px){.downloads{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.downloads{grid-template-columns:1fr}.session{justify-content:flex-start}}
 @media(max-width:1000px){.sensors,.metrics,.coverage{grid-template-columns:repeat(2,1fr)}.grid.two{grid-template-columns:1fr}}
