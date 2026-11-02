@@ -94,7 +94,7 @@ fi
 
 # The active response must never lock out the administrator: trust the IP
 # this script is being run from over SSH.
-ADMIN_IP="${SSH_CLIENT%% *}"
+ADMIN_IP="${SSH_CLIENT:-}"; ADMIN_IP="${ADMIN_IP%% *}"
 [ -n "$ADMIN_IP" ] || ADMIN_IP="$(who -m 2>/dev/null | sed -n 's/.*(\([0-9a-fA-F.:]*\)).*/\1/p')"
 TRUSTED="$(env_value CYBERSEG_TRUSTED_NETWORKS)"
 if [ -n "$ADMIN_IP" ]; then
