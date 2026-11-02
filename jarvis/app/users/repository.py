@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import astuple
 import sqlite3
+from app.core.database import connect_database, postgres_enabled
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
@@ -24,7 +25,7 @@ class UserRepository:
         self.path = Path(path); self.path.parent.mkdir(parents=True, exist_ok=True); self._migrate()
 
     def _conn(self):
-        connection = sqlite3.connect(self.path); connection.row_factory = sqlite3.Row; return connection
+        return connect_database(self.path)
 
     def _migrate(self) -> None:
         with self._conn() as c:
@@ -37,6 +38,8 @@ class UserRepository:
             CREATE TABLE IF NOT EXISTS user_device_permissions (user_id TEXT NOT NULL, device_id TEXT NOT NULL, access_level TEXT NOT NULL, PRIMARY KEY(user_id,device_id));
             CREATE TABLE IF NOT EXISTS user_integrations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, provider TEXT NOT NULL, account_label TEXT NOT NULL, credentials_path TEXT, metadata_json TEXT NOT NULL DEFAULT '{}', UNIQUE(user_id,provider,account_label));
             """)
+            if postgres_enabled():
+                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_casefold ON users(lower(display_name))")
             if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
                 now = _now(); c.execute("INSERT INTO users(id,display_name,created_at,updated_at,language,timezone,response_style,role,enabled) VALUES(?,?,?,?,?,?,?,?,1)", (LEGACY_OWNER_ID, "Owner", _iso(now), _iso(now), "es", "America/Guayaquil", "technical", UserRole.OWNER.value))
 

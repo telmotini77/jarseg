@@ -24,6 +24,9 @@ class NetworkContext:
     local_addresses: frozenset[str] = frozenset()
     gateway_ip: str = ""
     trusted_networks: tuple[str, ...] = ()
+    # UDP services this host offers on high ports (e.g. the WireGuard VPN):
+    # floods against them are checked although they sit in the ephemeral range.
+    service_udp_ports: frozenset[int] = frozenset()
 
     def is_local(self, address: str) -> bool:
         return address in self.local_addresses

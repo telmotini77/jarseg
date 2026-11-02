@@ -3,11 +3,18 @@ export const API = import.meta.env.VITE_CYBERSEG_API_URL || '';
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
 
+export type Session = { user: string; role: 'admin' | 'viewer' };
+
 export type Alert = {
   id: string; timestamp: string; sourceIp: string; destinationIp: string; risk: Severity; description: string; score: number;
   category: string; ruleId: string; mitre: string; layer: string; sensor: string; action: string;
+  acknowledged?: boolean; falsePositive?: boolean;
   feature?: { kind?: string; response?: { target?: string; seconds?: number; reason?: string } };
 };
+
+export type OrderResult = { action: 'block' | 'unblock'; ip: string; ok: boolean; message: string };
+
+export class Unauthorized extends Error {}
 
 export type Block = { ip: string; reason: string; severity: Severity; ruleId: string; sensor: string; offenses: number; blockedAt: string; expiresAt: string };
 
@@ -33,10 +40,28 @@ export type Engine = {
 };
 export type EngineState = { captureEnabled: boolean; engine: Engine };
 
-export async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API}${path}`);
-  if (!response.ok) throw new Error(`${path}: ${response.status}`);
+async function reply<T>(response: Response, path: string): Promise<T> {
+  if (response.status === 401) throw new Unauthorized();
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const message = Array.isArray(body.message) ? body.message.join(' ') : body.message;
+    throw new Error(message || `${path}: ${response.status}`);
+  }
   return response.json() as Promise<T>;
+}
+
+export async function getJson<T>(path: string): Promise<T> {
+  return reply<T>(await fetch(`${API}${path}`, { credentials: 'same-origin' }), path);
+}
+
+// Changes carry the anti-CSRF header the backend requires.
+export async function postJson<T>(path: string, body: unknown = {}): Promise<T> {
+  const response = await fetch(`${API}${path}`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CyberSeg-CSRF': '1' },
+    body: JSON.stringify(body),
+  });
+  return reply<T>(response, path);
 }
 
 export const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low'];

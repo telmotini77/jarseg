@@ -45,17 +45,30 @@ services:
       start_period: 30s
     logging: *logging
 
+  # Web dashboard: HTTPS on the server's LAN IP (no domain needed), login
+  # required. Port 80 only offers the certificate and redirects to HTTPS.
   frontend:
     build: ./frontend
     restart: unless-stopped
     environment:
-      CYBERSEG_DASHBOARD_USER: ${CYBERSEG_DASHBOARD_USER:-}
-      CYBERSEG_DASHBOARD_PASSWORD: ${CYBERSEG_DASHBOARD_PASSWORD:-}
+      CYBERSEG_SERVER_IP: ${CYBERSEG_SERVER_IP:-}
+      CYBERSEG_HTTPS_PORT: ${CYBERSEG_HTTPS_PORT:-443}
+      CYBERSEG_HTTP_PORT: ${CYBERSEG_HTTP_PORT:-80}
+    volumes:
+      - cyberseg-tls:/etc/cyberseg/tls
+      - ./downloads:/usr/share/nginx/downloads:ro
     depends_on:
       backend:
         condition: service_healthy
     ports:
-      - "${CYBERSEG_DASHBOARD_BIND:-127.0.0.1}:${CYBERSEG_DASHBOARD_PORT:-5178}:80"
+      - "${CYBERSEG_DASHBOARD_BIND:-127.0.0.1}:${CYBERSEG_HTTPS_PORT:-443}:443"
+      - "${CYBERSEG_DASHBOARD_BIND:-127.0.0.1}:${CYBERSEG_HTTP_PORT:-80}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/certificado"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
     logging: *logging
 
   engine:
@@ -127,6 +140,8 @@ services:
 
 volumes:
   postgres-data:
+  # Local certificate authority and HTTPS certificate (keep it: devices trust it).
+  cyberseg-tls:
   suricata-logs:
   suricata-rules:
   suricata-run:

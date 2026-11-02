@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+from app.core.database import connect_database, postgres_enabled
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -66,13 +67,12 @@ class MemoryRepository:
         self._migrate()
 
     def _connection(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
+        connection = connect_database(self.path)
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def _migrate(self) -> None:
-        existed = self.path.exists() and self.path.stat().st_size > 0
+        existed = not postgres_enabled() and self.path.exists() and self.path.stat().st_size > 0
         with self._connection() as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
@@ -458,7 +458,7 @@ class MemoryRepository:
             clauses.append("project_id = ?")
             params.append(project_id)
         if user_id is not None:
-            clauses.append("(user_id = ? OR (scope IN ('shared', 'system') AND ?))" if include_shared else "user_id = ?")
+            clauses.append("(user_id = ? OR (scope IN ('shared', 'system') AND ? = 1))" if include_shared else "user_id = ?")
             params.append(user_id)
             if include_shared: params.append(1)
         if not include_expired:
@@ -768,6 +768,8 @@ class MemoryRepository:
         ]
 
     def backup_to(self, destination: str | Path) -> Path:
+        if postgres_enabled():
+            raise RuntimeError("PostgreSQL backups must be created with pg_dump or pg_dumpall")
         target = Path(destination)
         target.parent.mkdir(parents=True, exist_ok=True)
         with self._connection() as source, sqlite3.connect(target) as backup:
@@ -775,6 +777,8 @@ class MemoryRepository:
         return target
 
     def restore_from(self, source: str | Path) -> None:
+        if postgres_enabled():
+            raise RuntimeError("PostgreSQL restores must be performed with PostgreSQL tools")
         source_path = Path(source)
         if not source_path.is_file():
             raise FileNotFoundError(source_path)

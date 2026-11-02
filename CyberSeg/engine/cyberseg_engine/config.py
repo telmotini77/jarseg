@@ -81,6 +81,7 @@ class EngineConfig:
     audit_enabled: bool
     audit_interval_hours: int
     ssh_config_dir: str
+    vpn_port: int
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> EngineConfig:
@@ -122,4 +123,5 @@ class EngineConfig:
             audit_enabled=_flag(env, "CYBERSEG_AUDIT_ENABLED", True),
             audit_interval_hours=_int(env, "CYBERSEG_AUDIT_INTERVAL_HOURS", 6),
             ssh_config_dir=env.get("CYBERSEG_SSH_CONFIG_DIR", "/host/etc/ssh").strip(),
+            vpn_port=_int(env, "CYBERSEG_VPN_PORT", 51820),
         )

@@ -145,6 +145,14 @@ def test_udp_flood_and_dns_reflection():
     assert [(a.rule_id, a.risk, a.blockable) for a in reflection] == [("L4-REFLECTION-DDOS", "critical", False)]
 
 
+def test_flood_against_the_vpn_port_is_detected_but_other_high_ports_are_ignored():
+    context = NetworkContext(frozenset({SERVER}), GATEWAY, service_udp_ports=frozenset({51820}))
+    vpn = run(FloodDetector(SETTINGS, context), [udp(ATTACKER, SERVER, 51820, t=i / 2000) for i in range(5200)])
+    other = run(FloodDetector(SETTINGS, context), [udp(ATTACKER, SERVER, 50000, t=i / 2000) for i in range(5200)])
+    assert [(a.rule_id, a.blockable) for a in vpn] == [("L4-UDP-FLOOD", True)]
+    assert other == []
+
+
 def test_normal_web_traffic_is_not_a_flood():
     detector = FloodDetector(SETTINGS, CONTEXT)
     assert run(detector, [tcp(f"203.0.113.{i % 200}", SERVER, 443, t=i / 10) for i in range(2000)]) == []

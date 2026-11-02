@@ -1,6 +1,13 @@
-import { IsBoolean, IsInt, IsISO8601, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsISO8601, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class EngineHeartbeatDto {
+  // Outcome of operator orders (manual block/unblock) since the last heartbeat.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsObject({ each: true })
+  orderResults?: Record<string, unknown>[];
+
   // Sub-reports: active response, Suricata ingestion and server audit.
   @IsOptional()
   @IsObject()

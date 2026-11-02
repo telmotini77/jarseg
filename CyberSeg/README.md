@@ -168,17 +168,53 @@ sudo usermod -aG docker $USER    # cierra la sesión y vuelve a entrar
 
 **4. Instalación.** Copia la carpeta `CyberSeg` a la VM y ejecuta `./deploy/install.sh` **desde la sesión SSH de tu PC**, para que tu IP quede como de confianza.
 
-**5. Conexión desde Windows.** Abre un túnel SSH:
+**5. Conexión.** Sigue la sección siguiente: panel web por IP en tu red y VPN para cuando estés fuera.
 
-```powershell
-ssh -N -L 5178:127.0.0.1:5178 -L 8780:127.0.0.1:8780 usuario@IP-de-la-VM
-```
+## Acceso al panel por IP (sin dominio)
 
-Con el túnel abierto:
-- el dashboard queda en `http://127.0.0.1:5178`;
-- JARVIS funciona con `CYBERSEG_API_URL=http://127.0.0.1:8780`.
+El panel escucha en la IP de la red local del servidor, `https://<IP>/`, y nunca se publica en Internet.
 
-Para publicar el dashboard en la LAN, define `CYBERSEG_DASHBOARD_USER`, `CYBERSEG_DASHBOARD_PASSWORD` y `CYBERSEG_DASHBOARD_BIND=0.0.0.0`. Docker publica los puertos por delante de `ufw`.
+1. **Certificado (una vez por equipo).** El servidor tiene su propia autoridad de certificación, limitada a sus IPs: aunque alguien robara su clave, no podría falsificar otros sitios web. Abre `http://<IP>/certificado`, comprueba que la huella coincide con la que mostró `install.sh` e instálalo. En Windows, `CyberSeg.exe` lo hace por ti. Así el navegador confía en `https://<IP>/` sin advertencias, Windows puede comprobar la revocación (`/cyberseg.crl`) y se puede instalar la app.
+2. **Inicio de sesión.** `install.sh` genera la contraseña del usuario `admin`, que gestiona: bloquea y desbloquea IPs, revisa alertas, acepta riesgos y detiene o inicia la captura. Para alguien que solo debe consultar, define `CYBERSEG_VIEWER_PASSWORD` (usuario `lector`). La sesión dura 12 h, la cookie es `HttpOnly`/`Secure`/`SameSite=Strict`, cada cambio exige una cabecera anti-CSRF, y tras 5 intentos fallidos el acceso se bloquea 15 minutos para esa IP.
+3. **Descargas.** Desde el panel: informe **PDF** y libro **Excel** (7 o 30 días) y **CSV** de alertas. El panel también se puede **instalar como app** desde el menú del navegador, en PC o móvil. El programa **`CyberSeg.exe`** para Windows se compila con `desktop/build.ps1`; cópialo a `downloads/` para ofrecerlo desde el panel.
+
+JARVIS sigue usando la API local `http://127.0.0.1:8780`, que no pasa por el panel web.
+
+## Acceso remoto por VPN (desde cualquier red)
+
+`install.sh` activa una VPN **WireGuard** integrada (`docker-compose.vpn.yml`). Con ella entras al panel desde cualquier red (datos móviles, otra casa, un hotel) usando **la misma IP y el mismo certificado** que en casa: el túnel solo lleva el tráfico de CyberSeg.
+
+1. En tu router, redirige **solo** el puerto UDP `51820` (`CYBERSEG_VPN_PORT`) a la IP del servidor.
+2. Instala WireGuard ([wireguard.com/install](https://www.wireguard.com/install/)) e importa tu perfil:
+   - PC: `vpn/peer_pc/peer_pc.conf`;
+   - móvil: escanea el QR de `docker compose exec vpn /app/show-peer movil`.
+3. Activa la VPN y abre `https://<IP-de-la-red-local>/` o usa `CyberSeg.exe`.
+
+**Más dispositivos:** añade nombres a `CYBERSEG_VPN_PEERS` y ejecuta `docker compose up -d`.
+
+**Si tu IP pública cambia:** usa un nombre de DNS dinámico (DuckDNS, No-IP…) en `CYBERSEG_VPN_ENDPOINT`.
+
+**Si ya usas otra VPN** (Tailscale, ZeroTier, OpenVPN): instala con `--no-vpn` y conéctate a la IP de la red local a través de ella.
+
+Los perfiles de `vpn/` contienen claves privadas: no los compartas ni los subas a git (ya están excluidos).
+
+## Resistencia a ataques
+
+| Capa | Protección |
+|---|---|
+| Exposición | Lo único abierto a Internet es UDP `51820`. WireGuard **no responde** a paquetes sin clave válida: para un escáner el puerto parece cerrado, y sin conocer la clave no hay intercambio que explotar. El panel, la API y la base de datos nunca son públicos. |
+| VPN | Criptografía moderna (Curve25519, ChaCha20-Poly1305) y cookies anti-DoS de WireGuard cuando el servidor está bajo carga. El motor vigila el puerto de la VPN y **bloquea** a quien lo inunde. |
+| Panel web | Límite de 30 peticiones/s por IP (con ráfaga de 80) y de 60 conexiones simultáneas; `/api/auth/login`, 10 por minuto. Tiempos de espera cortos contra conexiones lentas (*slowloris*: corte a los 10 s), cabeceras y cuerpos acotados, TLS 1.2/1.3 y cabeceras de seguridad (HSTS, CSP, X-Frame-Options…). |
+| Red | Detección y bloqueo automático de floods SYN/UDP/ICMP, escaneos y fuerza bruta (ver Cobertura). La auditoría avisa si faltan las SYN cookies del kernel. |
+| Disponibilidad | Cada contenedor tiene `restart: unless-stopped` y *healthcheck*. El panel no depende de la VPN para arrancar, así que un reinicio del servidor, en cualquier orden, no lo deja caído. |
+
+Probado en laboratorio:
+- 1.000 peticiones en 0,8 s: 896 se rechazaron al instante (429) y el panel siguió respondiendo.
+- Un slowloris quedó cortado a los 10 s.
+- La basura enviada al puerto VPN no obtuvo respuesta.
+- Un flood UDP sostenido contra la VPN se detectó y su origen quedó bloqueado, con la VPN sana todo el tiempo.
+
+Un DDoS volumétrico que sature tu conexión a Internet solo se mitiga con tu proveedor. Aun así, la VPN no ofrece nada que atacar más allá de ese ancho de banda, y en tu red local el panel sigue disponible.
 
 ### Probar la detección y la prevención
 
@@ -201,6 +237,8 @@ Desde un equipo de confianza las alertas aparecen igual, pero sin bloqueo (respu
 | Prevención `NO DISPONIBLE` | El motor no tiene `NET_ADMIN` o falla `nft` (revisa los registros del motor) |
 | Suricata `SIN DATOS` | Falta `COMPOSE_PROFILES=suricata`, o Suricata no tiene RAM: `docker compose logs suricata` |
 | Captura activa pero 0 paquetes | La interfaz elegida no es la que lleva el tráfico |
+| No puedo entrar al panel | Comprueba que el certificado está instalado (`http://<IP>/certificado`) y la contraseña de `CYBERSEG_ADMIN_PASSWORD` en `.env`. Tras 5 fallos espera 15 min. |
+| La VPN no conecta | Revisa la redirección UDP 51820 en el router, `CYBERSEG_VPN_ENDPOINT` (tu IP pública actual) y `docker compose logs vpn`. |
 | Te bloqueaste a ti mismo | Desde la consola de la VM: `docker compose exec engine nft flush set inet cyberseg blocked4`. Después añade tu IP a `CYBERSEG_TRUSTED_NETWORKS`. |
 
 ## Límites conocidos

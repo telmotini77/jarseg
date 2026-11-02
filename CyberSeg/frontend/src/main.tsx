@@ -4,3 +4,10 @@ import { App } from './App';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
+
+// Installable app: service workers only run on trusted HTTPS (or localhost).
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch(() => undefined);
+  });
+}

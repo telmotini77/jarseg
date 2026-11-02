@@ -11,7 +11,11 @@ export class AlertsGateway {
   }
 
   // Lets the dashboard refresh blocks and findings without polling.
-  notify(event: 'blocks_changed' | 'findings_changed') {
+  notify(event: 'blocks_changed' | 'findings_changed' | 'alerts_changed' | 'engine_changed') {
     this.server.emit(event);
+  }
+
+  notifyOrder(result: Record<string, unknown>) {
+    this.server.emit('order_result', result);
   }
 }

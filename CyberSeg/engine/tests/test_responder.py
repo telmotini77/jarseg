@@ -115,6 +115,28 @@ def test_blocks_survive_engine_restarts():
     assert reported == []
 
 
+def test_manual_block_respects_protections():
+    nft = FakeNft()
+    handler, reported = responder(nft)
+    assert handler.manual_block("203.0.113.50", 7200, "Bloqueo manual de admin: pruebas") == (True, "203.0.113.50 bloqueada durante 2 h.")
+    ok, message = handler.manual_block(ADMIN, 3600, "error del operador")
+    assert not ok and "CYBERSEG_TRUSTED_NETWORKS" in message
+    assert [(block["ip"], block["ruleId"]) for block in reported] == [("203.0.113.50", "MANUAL")]
+    dry, _ = responder(FakeNft(), mode="dry-run")
+    assert dry.manual_block("203.0.113.50", 3600, "x")[0] is False
+
+
+def test_operator_orders_report_their_outcome():
+    from cyberseg_engine.main import _apply_orders
+
+    handler, _ = responder(FakeNft())
+    results = _apply_orders({"block": [{"ip": "203.0.113.50", "seconds": 3600, "reason": "x"}, {"ip": GATEWAY, "seconds": 60}], "unblock": ["203.0.113.9"]}, handler)
+    assert [(item["action"], item["ip"], item["ok"]) for item in results] == [
+        ("unblock", "203.0.113.9", True), ("block", "203.0.113.50", True), ("block", GATEWAY, False),
+    ]
+    assert _apply_orders({"block": [{"ip": "203.0.113.50"}]}, None)[0]["ok"] is False
+
+
 def test_firewall_failure_is_reported_on_the_alert():
     handler, reported = responder(FakeNft(fail=True))
     result = handler.handle(attack("203.0.113.9"))

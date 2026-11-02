@@ -68,6 +68,9 @@ model Finding {
   lastSeen       DateTime  @default(now())
   resolved       Boolean   @default(false)
   resolvedAt     DateTime?
+  // Risk accepted by an administrator: later audits keep it closed.
+  accepted       Boolean   @default(false)
+  acceptedBy     String    @default("")
 
   @@index([resolved, severity])
 }

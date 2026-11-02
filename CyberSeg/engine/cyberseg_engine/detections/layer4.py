@@ -68,7 +68,8 @@ class FloodDetector:
                 )]
             return []
         if (
-            packet.destination_port >= 32768 or packet.source_port in _CLIENT_UDP_SOURCES
+            (packet.destination_port >= 32768 and packet.destination_port not in self._context.service_udp_ports)
+            or packet.source_port in _CLIENT_UDP_SOURCES
             or not self._context.is_local(packet.destination_ip)
         ):
             return []
